@@ -13,7 +13,7 @@ Word Highlighter is a Chrome extension that allows users to double-click on any 
 
 ## Installation
 
-1. **Clone the Repository:**
+1. **Clone the Repository:** https://github.com/gmiv/multi-highlighter-chrome-extention.git
 2. **Load the Extension in Chrome:**
 - Open Chrome and navigate to `chrome://extensions/`.
 - Enable 'Developer Mode' at the top right.
