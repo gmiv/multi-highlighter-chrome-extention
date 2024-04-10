@@ -2,12 +2,73 @@
 <html>
 <head>
   <title>Word Highlighter</title>
+  <style>
+    body {
+      font-family: 'Georgia', serif;
+      padding: 15px;
+      line-height: 1.6;
+    }
+    h1 {
+      font-size: 24px;
+      color: #333;
+    }
+    .readme {
+      font-size: 14px;
+      margin-bottom: 20px;
+    }
+    .highlight-instruction, .clipboard-instruction {
+      background-color: #f4f4f4;
+      padding: 10px;
+      border-left: 3px solid #007BFF;
+      margin: 10px 0;
+    }
+    .color-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr); /* Adjust based on the number of colors */
+      grid-gap: 10px;
+      margin-top: 20px;
+    }
+    .color-cell {
+      width: 50px; /* Adjust size based on preference */
+      height: 50px;
+      border-radius: 50%;
+      border: 2px solid #fff; /* Optional, adds a border around each color */
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Optional, adds a subtle shadow */
+    }
+  </style>
 </head>
 <body>
   <h1>Word Highlighter</h1>
-  <!-- <input type="color" id="colorPicker"> -->
-  <!-- <div id="colorPresets"></div> -->
-  <!-- <button id="clearHighlights">Clear Highlights</button> -->
-  <!-- <script src="popup.js"></script> -->
+  <div style="display: flex; flex-direction: column;">
+    <div class="readme" style="order: 1;">
+    <div class="highlight-instruction">
+      <p><strong>To Highlight:</strong> Double-click any word on a page to bring up the color picker and presets. Select a color to highlight the word.</p>
+    </div>
+    <div class="clipboard-instruction">
+      <p><strong>Clipboard:</strong> Double-clicking a word also copies it to your clipboard automatically.</p>
+    </div>
+  </div>
+
+  <div class="color-grid" id="colorPresets" style="order: 2; align-self: flex-end;">
+  </div> <!-- Closing the color-grid div -->
+
+  <script>
+    // Define your preset colors
+    const presets = [
+      '#FF007F', '#00FF00', '#00FFFF', '#FFD700',
+      '#FF5733', '#33FF57', '#3357FF', '#F333FF',
+      '#FF3357', '#FF00FF', '#FFFF00', '#00FF99'
+    ];
+
+    const presetsContainer = document.getElementById('colorPresets');
+    
+    // Create the color cells for each preset color
+    presets.forEach(color => {
+      const cell = document.createElement('div');
+      cell.className = 'color-cell';
+      cell.style.backgroundColor = color;
+      presetsContainer.appendChild(cell);
+    });
+  </script>
 </body>
 </html>
