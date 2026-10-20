@@ -1,74 +1,287 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="utf-8">
   <title>Word Highlighter</title>
   <style>
+    :root {
+      --bg: #f7f7fa;
+      --surface: #ffffff;
+      --fg: #17171c;
+      --muted: #6b6b78;
+      --line: #e6e6ee;
+      --hover: #f0f0f5;
+      --accent: #ff007f;
+      --danger: #d92d4f;
+      --danger-bg: #fdecef;
+      --ring: #17171c;
+      --logo: #17171c;
+      color-scheme: light;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #121216;
+        --surface: #1b1b21;
+        --fg: #f2f2f5;
+        --muted: #9a9aa8;
+        --line: #2a2a33;
+        --hover: #24242c;
+        --danger: #ff6b85;
+        --danger-bg: #2d1a20;
+        --ring: #f2f2f5;
+        --logo: #2a2a33;
+        color-scheme: dark;
+      }
+    }
+
+    * { box-sizing: border-box; }
     body {
-      font-family: 'Georgia', serif;
-      padding: 15px;
-      line-height: 1.6;
+      margin: 0;
+      width: 340px;
+      background: var(--bg);
+      color: var(--fg);
+      font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
-    h1 {
-      font-size: 24px;
-      color: #333;
+    button { font: inherit; color: inherit; cursor: pointer; }
+    button:focus-visible, input:focus-visible + .switch { outline: 2px solid var(--ring); outline-offset: 2px; }
+
+    header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 14px 16px 12px;
     }
-    .readme {
-      font-size: 14px;
-      margin-bottom: 20px;
+    .logo { flex: none; width: 30px; height: 30px; }
+    .logo .tile { fill: var(--logo); }
+    .brand h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
+    .brand p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+
+    main { padding: 0 12px 12px; }
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      overflow: hidden;
     }
-    .highlight-instruction, .clipboard-instruction {
-      background-color: #f4f4f4;
-      padding: 10px;
-      border-left: 3px solid #007BFF;
-      margin: 10px 0;
+    .panel-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      padding: 10px 12px 6px;
     }
-    .color-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr); /* Adjust based on the number of colors */
-      grid-gap: 10px;
-      margin-top: 20px;
+    .eyebrow {
+      font-size: 11px;
+      font-weight: 650;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--muted);
     }
-    .color-cell {
-      width: 50px; /* Adjust size based on preference */
-      height: 50px;
+    .summary { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+    #terms { list-style: none; margin: 0; padding: 0 6px 6px; max-height: 248px; overflow-y: auto; }
+    .term {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      border-radius: 8px;
+    }
+    .term:hover { background: var(--hover); }
+    .jump {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 6px;
+      border: 0;
+      background: none;
+      text-align: left;
+      border-radius: 8px;
+    }
+    .swatch {
+      flex: none;
+      width: 14px;
+      height: 14px;
       border-radius: 50%;
-      border: 2px solid #fff; /* Optional, adds a border around each color */
-      box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Optional, adds a subtle shadow */
+      box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
     }
+    .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+    .count {
+      flex: none;
+      min-width: 22px;
+      padding: 1px 7px;
+      border-radius: 99px;
+      background: var(--hover);
+      color: var(--muted);
+      font-size: 11.5px;
+      font-variant-numeric: tabular-nums;
+      text-align: center;
+    }
+    .term:hover .count { background: var(--surface); }
+    .remove {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 28px;
+      height: 28px;
+      margin-right: 2px;
+      border: 0;
+      border-radius: 7px;
+      background: none;
+      color: var(--muted);
+      opacity: 0;
+    }
+    .term:hover .remove, .remove:focus-visible { opacity: 1; }
+    .remove:hover { background: var(--danger-bg); color: var(--danger); }
+
+    .state { margin: 0; padding: 18px 16px 22px; text-align: center; color: var(--muted); text-wrap: balance; }
+    .state strong { display: block; margin-bottom: 2px; color: var(--fg); font-weight: 600; }
+    .state .demo {
+      display: inline-block;
+      margin-bottom: 10px;
+      padding: 0 4px;
+      border-radius: 3px;
+      font-weight: 700;
+      color: #111;
+      background: #ffff00;
+      box-shadow: 0 0 0 1px #ffff00;
+    }
+
+    #clear {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      width: 100%;
+      height: 36px;
+      margin-top: 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      font-weight: 600;
+    }
+    #clear:not(:disabled):hover { background: var(--danger-bg); border-color: transparent; color: var(--danger); }
+    #clear:disabled { cursor: default; color: var(--muted); opacity: 0.6; }
+
+    .setting {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-top: 10px;
+      padding: 10px 12px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      cursor: pointer;
+    }
+    .setting small { display: block; color: var(--muted); font-size: 11.5px; }
+    .setting input { position: absolute; opacity: 0; pointer-events: none; }
+    .switch {
+      flex: none;
+      position: relative;
+      width: 34px;
+      height: 20px;
+      border-radius: 99px;
+      background: var(--line);
+      transition: background 160ms;
+    }
+    .switch::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+      transition: transform 160ms;
+    }
+    input:checked + .switch { background: var(--accent); }
+    input:checked + .switch::after { transform: translateX(14px); }
+
+    footer {
+      display: grid;
+      gap: 4px;
+      padding: 0 16px 14px;
+      color: var(--muted);
+      font-size: 11.5px;
+      text-align: center;
+    }
+    kbd {
+      padding: 0 4px;
+      border: 1px solid var(--line);
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      font: inherit;
+      font-size: 10.5px;
+    }
+    kbd + kbd { margin-left: 2px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
 <body>
-  <h1>Word Highlighter</h1>
-  <div style="display: flex; flex-direction: column;">
-    <div class="readme" style="order: 1;">
-    <div class="highlight-instruction">
-      <p><strong>To Highlight:</strong> Double-click any word on a page to bring up the color picker and presets. Select a color to highlight the word.</p>
+  <header>
+    <svg class="logo" viewBox="0 0 30 30" aria-hidden="true">
+      <rect class="tile" width="30" height="30" rx="8"/>
+      <rect x="6" y="8" width="13" height="4" rx="2" fill="#ff007f"/>
+      <rect x="6" y="13" width="18" height="4" rx="2" fill="#ffff00"/>
+      <rect x="6" y="18" width="9" height="4" rx="2" fill="#00ffff"/>
+    </svg>
+    <div class="brand">
+      <h1>Word Highlighter</h1>
+      <p>Double-click a word, pick a color.</p>
     </div>
-    <div class="clipboard-instruction">
-      <p><strong>Clipboard:</strong> Double-clicking a word also copies it to your clipboard automatically.</p>
-    </div>
-  </div>
+  </header>
 
-  <div class="color-grid" id="colorPresets" style="order: 2; align-self: flex-end;">
-  </div> <!-- Closing the color-grid div -->
+  <main>
+    <section class="panel" aria-labelledby="on-page">
+      <div class="panel-head">
+        <span class="eyebrow" id="on-page">On this page</span>
+        <span class="summary" id="summary" aria-live="polite"></span>
+      </div>
+      <ul id="terms" aria-labelledby="on-page"></ul>
+      <p class="state" id="state">Loading…</p>
+    </section>
 
-  <script>
-    // Define your preset colors
-    const presets = [
-      '#FF007F', '#00FF00', '#00FFFF', '#FFD700',
-      '#FF5733', '#33FF57', '#3357FF', '#F333FF',
-      '#FF3357', '#FF00FF', '#FFFF00', '#00FF99'
-    ];
+    <button id="clear" type="button" disabled>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+      </svg>
+      Clear all highlights
+    </button>
 
-    const presetsContainer = document.getElementById('colorPresets');
-    
-    // Create the color cells for each preset color
-    presets.forEach(color => {
-      const cell = document.createElement('div');
-      cell.className = 'color-cell';
-      cell.style.backgroundColor = color;
-      presetsContainer.appendChild(cell);
-    });
-  </script>
+    <label class="setting">
+      <span>
+        Copy word on double-click
+        <small>Puts the word on your clipboard too</small>
+      </span>
+      <input type="checkbox" id="copy" role="switch">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+  </main>
+
+  <footer>
+    <span>Double-click a highlight to recolor or remove it</span>
+    <span><kbd>Esc</kbd> closes the picker · <kbd>←</kbd><kbd>→</kbd> pick a swatch</span>
+  </footer>
+
+  <template id="term-row">
+    <li class="term">
+      <button class="jump" type="button" title="Jump to next match">
+        <span class="swatch"></span>
+        <span class="label"></span>
+        <span class="count"></span>
+      </button>
+      <button class="remove" type="button">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
+          <path d="M6 6l12 12M18 6L6 18"/>
+        </svg>
+      </button>
+    </li>
+  </template>
+
+  <script src="popup.js"></script>
 </body>
 </html>

@@ -1,1 +1,0 @@
-// Background script content goes here
