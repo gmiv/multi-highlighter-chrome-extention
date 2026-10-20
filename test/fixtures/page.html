@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Fixture</title>
+  <style>
+    body { font: 18px/1.6 Georgia, serif; margin: 40px; }
+    /* Hostile page styles the picker and marks must survive. */
+    button { background: red !important; border-radius: 0 !important; width: 300px !important; }
+    mark { padding: 0.5em; background: orange; }
+    #edge { text-align: right; }
+  </style>
+</head>
+<body>
+  <p id="fruit">Apple pie, apple juice, an APPLE a day, but never pineapple or apples.</p>
+  <p id="cafe">The Café on the corner serves café au lait; the cafés downtown do not.</p>
+  <p id="mixed">An <em>apple</em> in emphasis and an apple in <a href="#">a link apple</a>.</p>
+  <textarea id="ta">apple inside a textarea</textarea>
+  <div id="ce" contenteditable="true">apple inside contenteditable</div>
+  <svg width="200" height="30"><text id="svgtext" x="0" y="20">apple in svg</text></svg>
+  <p id="edge">Far right edge word: zebra</p>
+  <div style="height: 1600px"></div>
+  <p id="far">The last apple is far below the fold.</p>
+</body>
+</html>
