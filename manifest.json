@@ -1,15 +1,19 @@
 {
   "manifest_version": 3,
   "name": "Word Highlighter",
-  "description": "Double-click any word to highlight every occurrence on the page in the color you pick.",
-  "version": "1.1.0",
-  "permissions": ["activeTab", "storage", "scripting"],
+  "description": "Highlight words in color on every page: saved keyword lists, double-click highlights, scrollbar markers and match counts.",
+  "version": "2.0.0",
+  "permissions": ["activeTab", "storage", "scripting", "contextMenus"],
+  "background": {
+    "service_worker": "background.js"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],
-      "js": ["content.js"]
+      "js": ["shared.js", "content.js"]
     }
   ],
+  "options_page": "options.html",
   "action": {
     "default_title": "Word Highlighter",
     "default_popup": "popup.html",
@@ -17,6 +21,20 @@
       "16": "icons/icon16.png",
       "48": "icons/icon48.png",
       "128": "icons/icon128.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": { "default": "Alt+Shift+H" },
+      "description": "Open Word Highlighter"
+    },
+    "open-picker": {
+      "suggested_key": { "default": "Alt+Shift+K" },
+      "description": "Highlight the selected text"
+    },
+    "toggle-hidden": {
+      "suggested_key": { "default": "Alt+Shift+J" },
+      "description": "Show or hide highlights on this page"
     }
   },
   "icons": {

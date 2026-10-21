@@ -12,6 +12,7 @@
       --line: #e6e6ee;
       --hover: #f0f0f5;
       --accent: #ff007f;
+      --star: #e5a400;
       --danger: #d92d4f;
       --danger-bg: #fdecef;
       --ring: #17171c;
@@ -26,6 +27,7 @@
         --muted: #9a9aa8;
         --line: #2a2a33;
         --hover: #24242c;
+        --star: #ffc733;
         --danger: #ff6b85;
         --danger-bg: #2d1a20;
         --ring: #f2f2f5;
@@ -42,32 +44,55 @@
       color: var(--fg);
       font: 13px/1.4 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
     }
-    button { font: inherit; color: inherit; cursor: pointer; }
-    button:focus-visible, input:focus-visible + .switch { outline: 2px solid var(--ring); outline-offset: 2px; }
+    button, input { font: inherit; color: inherit; }
+    button { cursor: pointer; }
+    :focus-visible, input:focus-visible + .switch { outline: 2px solid var(--ring); outline-offset: 2px; }
+    [hidden] { display: none !important; }
 
     header {
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 14px 16px 12px;
+      padding: 14px 12px 12px 16px;
     }
     .logo { flex: none; width: 30px; height: 30px; }
     .logo .tile { fill: var(--logo); }
+    .brand { flex: 1; min-width: 0; }
     .brand h1 { margin: 0; font-size: 14px; font-weight: 700; letter-spacing: -0.01em; }
     .brand p { margin: 1px 0 0; font-size: 12px; color: var(--muted); }
+    .icon-btn {
+      flex: none;
+      display: grid;
+      place-items: center;
+      width: 30px;
+      height: 30px;
+      border: 0;
+      border-radius: 8px;
+      background: none;
+      color: var(--muted);
+    }
+    .icon-btn:hover:not(:disabled) { background: var(--hover); color: var(--fg); }
+    .icon-btn:disabled { opacity: 0.35; cursor: default; }
+    .icon-btn[aria-pressed="true"] { color: var(--accent); background: var(--hover); }
 
-    main { padding: 0 12px 12px; }
+    main { display: grid; gap: 10px; padding: 0 12px 12px; }
     .panel {
       background: var(--surface);
       border: 1px solid var(--line);
       border-radius: 12px;
       overflow: hidden;
     }
+
+    .site { display: flex; align-items: center; gap: 8px; padding: 8px 12px; cursor: pointer; }
+    .site svg { flex: none; color: var(--muted); }
+    .site-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+    .site small { color: var(--muted); font-size: 11.5px; white-space: nowrap; }
+
     .panel-head {
       display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      padding: 10px 12px 6px;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 6px 2px 12px;
     }
     .eyebrow {
       font-size: 11px;
@@ -76,15 +101,10 @@
       text-transform: uppercase;
       color: var(--muted);
     }
-    .summary { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .summary { flex: 1; text-align: right; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-    #terms { list-style: none; margin: 0; padding: 0 6px 6px; max-height: 248px; overflow-y: auto; }
-    .term {
-      display: flex;
-      align-items: center;
-      gap: 4px;
-      border-radius: 8px;
-    }
+    #terms { list-style: none; margin: 0; padding: 0 6px 4px; max-height: 236px; overflow-y: auto; }
+    .term { display: flex; align-items: center; gap: 2px; border-radius: 8px; }
     .term:hover { background: var(--hover); }
     .jump {
       flex: 1;
@@ -92,7 +112,7 @@
       display: flex;
       align-items: center;
       gap: 10px;
-      padding: 7px 6px;
+      padding: 6px;
       border: 0;
       background: none;
       text-align: left;
@@ -105,7 +125,11 @@
       border-radius: 50%;
       box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.15);
     }
-    .label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
+    /* One line: the term keeps its room, the list name truncates first. */
+    .names { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 6px; }
+    .label, .list-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .label { flex: 0 1 auto; font-weight: 550; }
+    .list-name { flex: 0 100 auto; font-size: 11.5px; color: var(--muted); }
     .count {
       flex: none;
       min-width: 22px;
@@ -118,27 +142,30 @@
       text-align: center;
     }
     .term:hover .count { background: var(--surface); }
-    .remove {
+    .row-btn {
       flex: none;
       display: grid;
       place-items: center;
       width: 28px;
       height: 28px;
-      margin-right: 2px;
       border: 0;
       border-radius: 7px;
       background: none;
       color: var(--muted);
-      opacity: 0;
     }
+    .star { font-size: 15px; line-height: 1; opacity: 0; }
+    .star[aria-pressed="true"] { opacity: 1; color: var(--star); }
+    .term:hover .star, .star:focus-visible { opacity: 1; }
+    .star:hover { background: var(--surface); color: var(--star); }
+    .remove { margin-right: 2px; opacity: 0; }
     .term:hover .remove, .remove:focus-visible { opacity: 1; }
     .remove:hover { background: var(--danger-bg); color: var(--danger); }
 
-    .state { margin: 0; padding: 18px 16px 22px; text-align: center; color: var(--muted); text-wrap: balance; }
+    .state { margin: 0; padding: 14px 16px 16px; text-align: center; color: var(--muted); text-wrap: balance; }
     .state strong { display: block; margin-bottom: 2px; color: var(--fg); font-weight: 600; }
     .state .demo {
       display: inline-block;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       padding: 0 4px;
       border-radius: 3px;
       font-weight: 700;
@@ -147,6 +174,31 @@
       box-shadow: 0 0 0 1px #ffff00;
     }
 
+    .add { display: flex; gap: 6px; padding: 8px; border-top: 1px solid var(--line); }
+    .add input {
+      flex: 1;
+      min-width: 0;
+      height: 32px;
+      padding: 0 10px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--bg);
+    }
+    .add input::placeholder { color: var(--muted); }
+    .add input:focus-visible { outline-offset: 0; }
+    .add button {
+      flex: none;
+      height: 32px;
+      padding: 0 12px;
+      border: 0;
+      border-radius: 8px;
+      background: var(--fg);
+      color: var(--bg);
+      font-weight: 600;
+    }
+    .add button:disabled { opacity: 0.35; cursor: default; }
+    .note { margin: -2px 0 0; padding: 0 12px 9px; font-size: 11.5px; color: var(--muted); }
+
     #clear {
       display: flex;
       align-items: center;
@@ -154,7 +206,6 @@
       gap: 8px;
       width: 100%;
       height: 36px;
-      margin-top: 10px;
       border: 1px solid var(--line);
       border-radius: 10px;
       background: var(--surface);
@@ -168,7 +219,6 @@
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      margin-top: 10px;
       padding: 10px 12px;
       background: var(--surface);
       border: 1px solid var(--line);
@@ -176,7 +226,7 @@
       cursor: pointer;
     }
     .setting small { display: block; color: var(--muted); font-size: 11.5px; }
-    .setting input { position: absolute; opacity: 0; pointer-events: none; }
+    .switch-input { position: absolute; opacity: 0; pointer-events: none; }
     .switch {
       flex: none;
       position: relative;
@@ -203,12 +253,14 @@
 
     footer {
       display: grid;
-      gap: 4px;
+      gap: 6px;
       padding: 0 16px 14px;
       color: var(--muted);
       font-size: 11.5px;
       text-align: center;
     }
+    footer a { color: var(--fg); font-weight: 600; text-decoration: none; }
+    footer a:hover { text-decoration: underline; }
     kbd {
       padding: 0 4px;
       border: 1px solid var(--line);
@@ -217,7 +269,6 @@
       font: inherit;
       font-size: 10.5px;
     }
-    kbd + kbd { margin-left: 2px; }
     @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
   </style>
 </head>
@@ -233,48 +284,76 @@
       <h1>Word Highlighter</h1>
       <p>Double-click a word, pick a color.</p>
     </div>
+    <button class="icon-btn" id="options" type="button" title="Keyword lists &amp; settings" aria-label="Keyword lists and settings">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+        <path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/>
+      </svg>
+    </button>
   </header>
 
   <main>
+    <label class="panel site" id="site-panel" hidden>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+        <circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>
+      </svg>
+      <span class="site-name" id="site"></span>
+      <small id="site-status"></small>
+      <input class="switch-input" type="checkbox" id="site-on" role="switch" aria-label="Saved keywords on this site">
+      <span class="switch" aria-hidden="true"></span>
+    </label>
+
     <section class="panel" aria-labelledby="on-page">
       <div class="panel-head">
         <span class="eyebrow" id="on-page">On this page</span>
         <span class="summary" id="summary" aria-live="polite"></span>
+        <button class="icon-btn" id="hide" type="button" aria-pressed="false" disabled
+          title="Hide highlights on this page (Alt+Shift+J)" aria-label="Hide highlights on this page">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+            <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/>
+          </svg>
+        </button>
       </div>
       <ul id="terms" aria-labelledby="on-page"></ul>
       <p class="state" id="state">Loading…</p>
+      <form class="add" id="add">
+        <input id="add-input" type="text" placeholder="Add a keyword for every page…" autocomplete="off"
+          aria-label="Add a saved keyword" maxlength="100">
+        <button type="submit" id="add-button" disabled>Add</button>
+      </form>
+      <p class="note" id="note" role="status" hidden></p>
     </section>
 
     <button id="clear" type="button" disabled>
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
       </svg>
-      Clear all highlights
+      Clear page highlights
     </button>
 
     <label class="setting">
       <span>
-        Copy word on double-click
-        <small>Puts the word on your clipboard too</small>
+        Match word variants
+        <small>apple → apples, city → cities, run → running</small>
       </span>
-      <input type="checkbox" id="copy" role="switch">
+      <input class="switch-input" type="checkbox" id="variants" role="switch">
       <span class="switch" aria-hidden="true"></span>
     </label>
   </main>
 
   <footer>
-    <span>Double-click a highlight to recolor or remove it</span>
-    <span><kbd>Esc</kbd> closes the picker · <kbd>←</kbd><kbd>→</kbd> pick a swatch</span>
+    <span>★ saves a word to every page · <kbd>Esc</kbd> closes the picker</span>
+    <a href="options.html" id="manage" target="_blank">Manage keyword lists &amp; settings →</a>
   </footer>
 
   <template id="term-row">
     <li class="term">
       <button class="jump" type="button" title="Jump to next match">
         <span class="swatch"></span>
-        <span class="label"></span>
+        <span class="names"><span class="label"></span><span class="list-name"></span></span>
         <span class="count"></span>
       </button>
-      <button class="remove" type="button">
+      <button class="row-btn star" type="button">★</button>
+      <button class="row-btn remove" type="button">
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" aria-hidden="true">
           <path d="M6 6l12 12M18 6L6 18"/>
         </svg>
@@ -282,6 +361,7 @@
     </li>
   </template>
 
+  <script src="shared.js"></script>
   <script src="popup.js"></script>
 </body>
 </html>

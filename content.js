@@ -1,83 +1,47 @@
 // Word Highlighter — content script.
-// Double-click a word to pick a color; every occurrence on the page is
-// highlighted. The popup lists, jumps to, and clears highlights via messages.
+// Highlights saved keywords on every page and words double-clicked on this one,
+// keeps up with content the page adds later, marks matches on the scrollbar,
+// and answers the popup and the background worker.
 (() => {
-  // The popup re-injects this file into tabs that predate the install.
-  if (window.__wordHighlighterLoaded) return;
+  // The popup and background re-inject this file into tabs that predate the
+  // install. A document without a body (an SVG or XML file) has no text to mark.
+  if (window.__wordHighlighterLoaded || !document.body) return;
   window.__wordHighlighterLoaded = true;
 
-  const PRESETS = [
-    { hex: '#FF5733', name: 'Ember' },
-    { hex: '#FFD700', name: 'Gold' },
-    { hex: '#FFFF00', name: 'Electric Yellow' },
-    { hex: '#00FF00', name: 'Bright Green' },
-    { hex: '#33FF57', name: 'Neon Lime' },
-    { hex: '#00FF99', name: 'Neon Mint' },
-    { hex: '#00FFFF', name: 'Aqua' },
-    { hex: '#3357FF', name: 'Bright Blue' },
-    { hex: '#F333FF', name: 'Bright Magenta' },
-    { hex: '#FF00FF', name: 'Neon Purple' },
-    { hex: '#FF007F', name: 'Neon Pink' },
-    { hex: '#FF3357', name: 'Neon Red' },
-  ];
+  const { PRESETS, normalizeTerm, keyFor, termPattern, inkFor, siteOf, store } = WH;
 
   const MARK_CLASS = 'word-highlighter-mark';
   const HTML_NS = 'http://www.w3.org/1999/xhtml';
   const MAX_TERM_LENGTH = 100;
+  const FLUSH_DELAY_MS = 120;
   const SKIP_TAGS = new Set([
     'SCRIPT', 'STYLE', 'NOSCRIPT', 'TEMPLATE', 'IFRAME', 'CANVAS',
     'TEXTAREA', 'INPUT', 'SELECT', 'OPTION',
   ]);
-  const WORD_CHAR = /[\p{L}\p{N}\p{M}_]/u;
-  const NOT_BEFORE = '(?<![\\p{L}\\p{N}\\p{M}_])';
-  const NOT_AFTER = '(?![\\p{L}\\p{N}\\p{M}_])';
+  const SKIP_ANCESTORS = [...SKIP_TAGS, 'svg', 'math', `mark.${MARK_CLASS}`].join(',');
+  const OBSERVE = { childList: true, subtree: true, characterData: true };
 
-  // key (lower-cased term) → { term, color }, in the order terms were added.
-  const terms = new Map();
+  // key → { key, term, color, match, saved, listName }. Saved entries mirror the
+  // keyword lists; the others were double-clicked here and last until reload.
+  const active = new Map();
   const jumpCursor = new Map();
-  const settings = { copyOnDoubleClick: true, highlightColor: PRESETS[0].hex };
+  const DEFAULTS = {
+    copyOnDoubleClick: true,
+    highlightColor: PRESETS[0].hex,
+    trigger: 'dblclick',
+    matchVariants: true,
+    showMarkers: true,
+  };
+  const settings = { ...DEFAULTS };
+  let matcher = null;
+  let hidden = false;
+  let paused = false;
   let picker = null;
-
-  chrome.storage.local.get(['copyOnDoubleClick', 'highlightColor'], (stored) => {
-    Object.assign(settings, stored);
-  });
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area !== 'local') return;
-    for (const [name, { newValue }] of Object.entries(changes)) {
-      if (name in settings) settings[name] = newValue;
-    }
-  });
+  let reportedCount = -1;
 
   // ---------------------------------------------------------------------------
   // Highlighting
   // ---------------------------------------------------------------------------
-
-  const keyFor = (term) => term.toLocaleLowerCase();
-  const normalizeTerm = (text) => text.replace(/\s+/g, ' ').trim();
-
-  function escapeRegExp(string) {
-    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  }
-
-  // Whole-word, case-insensitive, Unicode-aware. A boundary is only asserted
-  // on an edge that is itself a word character, so "C++" and "$5" still match.
-  function termRegex(term) {
-    const chars = Array.from(term);
-    const body = term.split(' ').map(escapeRegExp).join('\\s+');
-    const head = WORD_CHAR.test(chars[0]) ? NOT_BEFORE : '';
-    const tail = WORD_CHAR.test(chars[chars.length - 1]) ? NOT_AFTER : '';
-    return new RegExp(head + body + tail, 'giu');
-  }
-
-  // Black or white text, whichever contrasts more with the highlight (WCAG).
-  function inkFor(hex) {
-    const [r, g, b] = [1, 3, 5].map((i) => {
-      const c = parseInt(hex.slice(i, i + 2), 16) / 255;
-      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-    });
-    const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-    return luminance > 0.179 ? '#111111' : '#FFFFFF';
-  }
 
   function paint(mark, color) {
     // CSSOM writes are not blocked by page CSP; !important beats page styles.
@@ -95,12 +59,12 @@
     ].map((rule) => `${rule} !important`).join(';');
   }
 
-  function createMark(text, key, color) {
+  function createMark(text, entry) {
     const mark = document.createElement('mark');
     mark.className = MARK_CLASS;
-    mark.dataset.term = key;
+    mark.dataset.term = entry.key;
     mark.textContent = text;
-    paint(mark, color);
+    paint(mark, entry.color);
     return mark;
   }
 
@@ -109,6 +73,11 @@
       || SKIP_TAGS.has(el.tagName)
       || el.classList.contains(MARK_CLASS)
       || el.isContentEditable;
+  }
+
+  function insideSkipped(node) {
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+    return !el || el.closest(SKIP_ANCESTORS) !== null || el.isContentEditable;
   }
 
   // Collect first, mutate after: wrapping while walking would revisit the
@@ -127,16 +96,32 @@
     return nodes;
   }
 
-  function wrapMatches(textNode, regex, key, color) {
+  // "default" follows the global "Match word variants" switch.
+  const resolveMatch = (match) => (!match || match === 'default'
+    ? (settings.matchVariants ? 'variants' : 'word')
+    : match);
+
+  // One regex for every term; each term is its own capture group.
+  function buildMatcher(entries) {
+    if (!entries.length) return null;
+    // Longest first, so "New York" wins over "York" where both match.
+    const sorted = [...entries].sort((a, b) => b.term.length - a.term.length);
+    const source = sorted.map((entry) => `(${termPattern(entry.term, resolveMatch(entry.match))})`).join('|');
+    return { regex: new RegExp(source, 'giu'), entries: sorted };
+  }
+
+  function wrapMatches(textNode, { regex, entries }) {
     const text = textNode.nodeValue;
     let fragment = null;
     let last = 0;
     regex.lastIndex = 0;
     for (let match; (match = regex.exec(text));) {
+      // The one capture group that took part tells us which term matched.
+      const entry = entries[match.indexOf(match[0], 1) - 1];
       fragment ??= document.createDocumentFragment();
       if (match.index > last) fragment.append(text.slice(last, match.index));
       // Keep the page's own casing: "The" and "the" both stay as written.
-      fragment.append(createMark(match[0], key, color));
+      fragment.append(createMark(match[0], entry));
       last = match.index + match[0].length;
     }
     if (!fragment) return;
@@ -144,22 +129,19 @@
     textNode.replaceWith(fragment);
   }
 
-  function marksFor(key) {
-    return [...document.querySelectorAll(`mark.${MARK_CLASS}`)]
-      .filter((mark) => mark.dataset.term === key);
+  function highlightIn(root, m) {
+    if (insideSkipped(root)) return;
+    if (root.nodeType === Node.TEXT_NODE) wrapMatches(root, m);
+    else if (root.nodeType === Node.ELEMENT_NODE) for (const node of collectTextNodes(root)) wrapMatches(node, m);
   }
 
-  function highlightTerm(rawTerm, color) {
-    const term = normalizeTerm(rawTerm);
-    if (!term) return 0;
-    const key = keyFor(term);
-    for (const mark of marksFor(key)) paint(mark, color);
-    const regex = termRegex(term);
-    for (const node of collectTextNodes(document.body)) wrapMatches(node, regex, key, color);
+  const allMarks = () => [...document.querySelectorAll(`mark.${MARK_CLASS}`)];
+  const marksFor = (key) => allMarks().filter((mark) => mark.dataset.term === key);
 
-    const count = marksFor(key).length;
-    if (count) terms.set(key, { term: terms.get(key)?.term ?? term, color });
-    return count;
+  function countByKey() {
+    const counts = new Map();
+    for (const mark of allMarks()) counts.set(mark.dataset.term, (counts.get(mark.dataset.term) ?? 0) + 1);
+    return counts;
   }
 
   // Put the text back exactly as it was: unwrap, then re-join the text nodes
@@ -183,26 +165,157 @@
     }
   }
 
-  function removeTerm(key) {
-    for (const mark of marksFor(key)) unwrap(mark);
-    terms.delete(key);
-    jumpCursor.delete(key);
-  }
-
-  function clearAll() {
-    for (const mark of document.querySelectorAll(`mark.${MARK_CLASS}`)) unwrap(mark);
-    terms.clear();
-    jumpCursor.clear();
-  }
-
-  function listTerms() {
-    const counts = new Map();
-    for (const mark of document.querySelectorAll(`mark.${MARK_CLASS}`)) {
-      counts.set(mark.dataset.term, (counts.get(mark.dataset.term) ?? 0) + 1);
+  // Any change to the set of terms re-highlights the page in one combined
+  // pass, so overlapping terms ("New York" vs "York") resolve consistently.
+  function render() {
+    for (const mark of allMarks()) unwrap(mark);
+    matcher = hidden ? null : buildMatcher([...active.values()]);
+    if (matcher) highlightIn(document.body, matcher);
+    if (!hidden) {
+      const counts = countByKey();
+      for (const [key, entry] of active) if (!entry.saved && !counts.has(key)) active.delete(key);
     }
-    // Drop terms whose marks the page itself has since removed.
-    for (const key of terms.keys()) if (!counts.has(key)) terms.delete(key);
-    return [...terms].map(([key, { term, color }]) => ({ key, term, color, count: counts.get(key) }));
+    jumpCursor.clear();
+    settle(true);
+  }
+
+  // After our own DOM writes: drop the observer records they caused, then
+  // refresh the scrollbar markers and report the count (toolbar badge, and an
+  // open popup refreshes on it). `force` reports even if the count is unchanged.
+  function settle(force = false) {
+    observer.takeRecords();
+    if (matcher) observer.observe(document.body, OBSERVE);
+    else observer.disconnect();
+    markers.schedule();
+    const count = document.querySelectorAll(`mark.${MARK_CLASS}`).length;
+    if (count === reportedCount && !force) return;
+    reportedCount = count;
+    try {
+      chrome.runtime.sendMessage({ type: 'count', count }).catch(() => {});
+    } catch {
+      // Extension was reloaded; this orphaned script can no longer talk to it.
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Content the page adds later (infinite scroll, SPAs, chat, feeds)
+  // ---------------------------------------------------------------------------
+
+  const pending = new Set();
+  let flushTimer = 0;
+
+  const observer = new MutationObserver((records) => {
+    for (const record of records) {
+      if (record.type === 'characterData') pending.add(record.target);
+      else for (const node of record.addedNodes) pending.add(node);
+    }
+    flushTimer ||= setTimeout(flush, FLUSH_DELAY_MS);
+  });
+
+  function flush() {
+    flushTimer = 0;
+    const nodes = [...pending];
+    pending.clear();
+    if (matcher) for (const node of nodes) if (node.isConnected) highlightIn(node, matcher);
+    settle();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Terms: double-clicked (this page) and saved (every page)
+  // ---------------------------------------------------------------------------
+
+  const savedSnapshot = () => JSON.stringify([...active.values()].filter((e) => e.saved)
+    .sort((a, b) => a.key.localeCompare(b.key)));
+
+  async function loadSaved() {
+    const data = await store.load();
+    paused = store.isPaused(data.pausedSites, location.hostname);
+    const live = paused ? [] : store.activeKeywords(data, location.hostname);
+    const before = savedSnapshot();
+    for (const [key, entry] of active) if (entry.saved) active.delete(key);
+    for (const k of live) {
+      active.set(k.id, {
+        key: k.id, term: k.term, color: k.color, match: k.match ?? 'default', saved: true, listName: k.listName,
+      });
+    }
+    if (savedSnapshot() !== before) render();
+  }
+
+  function highlightTerm(rawTerm, color) {
+    const term = normalizeTerm(rawTerm);
+    const key = keyFor(term);
+    const current = active.get(key);
+    active.set(key, {
+      key,
+      term: current?.term ?? term,
+      color,
+      match: current?.match ?? 'default',
+      saved: Boolean(current?.saved),
+      listName: current?.listName,
+    });
+    render();
+    if (current?.saved) store.update(key, { color });
+  }
+
+  // Saving keeps the term on every site (first all-sites list) or only this
+  // one (a list for this site).
+  async function saveTerm(key, scope = 'all') {
+    const entry = active.get(key);
+    if (!entry) return;
+    const list = scope === 'site' ? await store.siteList(location.hostname) : await store.defaultList();
+    Object.assign(entry, { saved: true, listName: list.name });
+    await store.put(store.create(entry.term, entry.color, { match: entry.match, listId: list.id }));
+  }
+
+  // Unsaving keeps the highlight on this page until reload.
+  async function unsaveTerm(key) {
+    const entry = active.get(key);
+    if (entry) entry.saved = false;
+    await store.remove(key);
+  }
+
+  function removeTerm(key) {
+    const entry = active.get(key);
+    active.delete(key);
+    render();
+    if (entry?.saved) store.remove(key);
+  }
+
+  // Clears this page's double-click highlights; saved keywords stay.
+  function clearPage() {
+    for (const [key, entry] of active) if (!entry.saved) active.delete(key);
+    render();
+  }
+
+  function setHidden(value) {
+    hidden = value;
+    render();
+  }
+
+  function state() {
+    const counts = countByKey();
+    const terms = [...active.values()]
+      .map(({ key, term, color, match, saved, listName }) => ({
+        key, term, color, match, saved, listName, count: counts.get(key) ?? 0,
+      }))
+      .filter((t) => t.count > 0 || hidden);
+    return { terms, hidden, paused, site: siteOf(location.hostname) };
+  }
+
+  function focusMark(mark) {
+    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    mark.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
+    const color = active.get(mark.dataset.term)?.color ?? '#000000';
+    // Outline, not box-shadow: paint() pins box-shadow with !important, and
+    // !important styles outrank animations.
+    mark.animate(
+      [
+        { outline: `0 solid ${color}66` },
+        { outline: `6px solid ${color}66`, offset: 0.3 },
+        { outline: `0 solid ${color}66` },
+      ],
+      { duration: reduceMotion ? 1 : 900, easing: 'ease-out' },
+    );
   }
 
   function jumpTo(key) {
@@ -210,21 +323,77 @@
     if (!marks.length) return { index: 0, count: 0 };
     const index = ((jumpCursor.get(key) ?? -1) + 1) % marks.length;
     jumpCursor.set(key, index);
-
-    const mark = marks[index];
-    const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
-    mark.scrollIntoView({ block: 'center', inline: 'nearest', behavior: reduceMotion ? 'auto' : 'smooth' });
-    const color = terms.get(key)?.color ?? 'currentColor';
-    mark.animate(
-      [
-        { boxShadow: `0 0 0 1px ${color}` },
-        { boxShadow: `0 0 0 6px ${color}66`, offset: 0.3 },
-        { boxShadow: `0 0 0 1px ${color}` },
-      ],
-      { duration: reduceMotion ? 1 : 900, easing: 'ease-out' },
-    );
+    focusMark(marks[index]);
     return { index, count: marks.length };
   }
+
+  // ---------------------------------------------------------------------------
+  // Scrollbar markers: where every match is on the page, click to jump
+  // ---------------------------------------------------------------------------
+
+  const MARKERS_CSS = `
+    :host { all: initial; }
+    .tick {
+      position: absolute; right: 2px; width: 8px; height: 4px; border-radius: 2px;
+      pointer-events: auto; cursor: pointer; opacity: 0.85;
+      box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3);
+      transition: transform 100ms ease, opacity 100ms ease; transform-origin: right center;
+    }
+    .tick:hover { opacity: 1; transform: scale(1.5); }
+  `;
+
+  const markers = {
+    host: null,
+    root: null,
+    timer: 0,
+
+    schedule() {
+      this.timer ||= setTimeout(() => {
+        this.timer = 0;
+        this.draw();
+      }, 150);
+    },
+
+    draw() {
+      const docHeight = document.documentElement.scrollHeight;
+      const scrollable = docHeight > innerHeight;
+      const rows = new Map();
+      if (settings.showMarkers && scrollable) {
+        for (const mark of allMarks()) {
+          const rect = mark.getBoundingClientRect();
+          if (!rect.width && !rect.height) continue;
+          // Bucket to 4px rows so a dense page doesn't create thousands of ticks.
+          const row = Math.round((((rect.top + scrollY) / docHeight) * (innerHeight - 4)) / 4) * 4;
+          if (!rows.has(row)) rows.set(row, mark);
+        }
+      }
+      if (!rows.size) {
+        this.host?.remove();
+        this.host = null;
+        return;
+      }
+      if (!this.host) {
+        this.host = document.createElement('word-highlighter-markers');
+        this.host.style.cssText = 'all: initial; position: fixed; top: 0; right: 0; width: 12px; height: 100vh;'
+          + ' z-index: 2147483646; pointer-events: none;';
+        this.root = this.host.attachShadow({ mode: 'open' });
+        const sheet = new CSSStyleSheet();
+        sheet.replaceSync(MARKERS_CSS);
+        this.root.adoptedStyleSheets = [sheet];
+      }
+      if (!this.host.isConnected) document.documentElement.append(this.host);
+      this.root.replaceChildren(...[...rows].map(([row, mark]) => {
+        const entry = active.get(mark.dataset.term);
+        const tick = document.createElement('div');
+        tick.className = 'tick';
+        tick.style.top = `${row}px`;
+        tick.style.background = entry?.color ?? '#888888';
+        tick.title = entry?.term ?? '';
+        tick.addEventListener('click', () => focusMark(mark));
+        return tick;
+      }));
+    },
+  };
 
   // ---------------------------------------------------------------------------
   // Inline color picker (shadow DOM, so page CSS can't reach it)
@@ -287,6 +456,10 @@
     .remove { color: #d92d4f; }
     @media (prefers-color-scheme: dark) { .remove { color: #ff6b85; } }
     .remove[hidden] { display: none; }
+    .save-row { margin-top: 6px; }
+    .action .star { color: #e5a400; font-size: 13px; line-height: 1; }
+    .action .label { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+    .saved { background: var(--hover); border-color: transparent; }
   `;
 
   function el(tag, props = {}, children = []) {
@@ -305,7 +478,9 @@
   function openPicker(term, anchor) {
     closePicker();
     const key = keyFor(term);
-    const current = terms.get(key)?.color;
+    const entry = active.get(key);
+    const current = entry?.color;
+    const site = siteOf(location.hostname);
     const selected = (current ?? settings.highlightColor ?? '').toUpperCase();
 
     const host = document.createElement('word-highlighter-picker');
@@ -339,6 +514,30 @@
       onchange: (event) => choose(event.target.value.toUpperCase()),
     });
     const copied = el('span', { className: 'copied', textContent: 'Copied' });
+
+    // ★ Save highlights with the current (or last-used) color, then saves.
+    const saveAs = (scope) => {
+      closePicker();
+      getSelection().removeAllRanges();
+      highlightTerm(term, current ?? selected ?? PRESETS[0].hex);
+      if (active.has(key)) saveTerm(key, scope);
+    };
+    const star = (filled) => el('span', { className: 'star', textContent: filled ? '★' : '☆', ariaHidden: 'true' });
+    const saveButtons = entry?.saved
+      ? [el('button', {
+        className: 'action saved',
+        ariaPressed: 'true',
+        title: `Saved in “${entry.listName}”. Click to stop saving it.`,
+        onclick: () => { closePicker(); unsaveTerm(key); },
+      }, [star(true), el('span', { className: 'label', textContent: `Saved · ${entry.listName}` })])]
+      : [
+        el('button', {
+          className: 'action', title: 'Save: highlight it on every site', onclick: () => saveAs('all'),
+        }, [star(false), 'Save']),
+        ...(site ? [el('button', {
+          className: 'action', title: `Save: highlight it only on ${site}`, onclick: () => saveAs('site'),
+        }, [star(false), 'This site'])] : []),
+      ];
     const removeButton = el('button', {
       className: 'action remove',
       hidden: !current,
@@ -356,6 +555,7 @@
         ]),
         removeButton,
       ]),
+      el('footer', { className: 'save-row' }, saveButtons),
     ]);
     root.append(card);
     document.documentElement.append(host);
@@ -410,52 +610,71 @@
     };
   }
 
-  // ---------------------------------------------------------------------------
-  // Wiring
-  // ---------------------------------------------------------------------------
-
-  document.addEventListener('dblclick', (event) => {
-    if (picker && event.composedPath().includes(picker.host)) return;
-    const target = event.target;
-    if (target instanceof Element && (target.closest('input, textarea, select') || target.isContentEditable)) return;
-
+  // Opens the picker for the current selection; returns false if there is none.
+  function openForSelection(fallback) {
     const selection = getSelection();
     const term = normalizeTerm(selection.toString());
-    if (!term || term.length > MAX_TERM_LENGTH || !selection.rangeCount) return;
-
+    if (!term || term.length > MAX_TERM_LENGTH || !selection.rangeCount) return false;
     const rect = selection.getRangeAt(0).getBoundingClientRect();
-    const anchor = rect.width || rect.height
-      ? rect
-      : new DOMRect(event.clientX, event.clientY, 0, 0);
+    const anchor = rect.width || rect.height ? rect : fallback;
     openPicker(term, anchor);
-
     if (settings.copyOnDoubleClick) {
       navigator.clipboard.writeText(term)
         .then(() => picker?.showCopied())
         .catch(() => { /* Clipboard can be blocked by page permissions policy. */ });
     }
+    return true;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Wiring
+  // ---------------------------------------------------------------------------
+
+  document.addEventListener('dblclick', (event) => {
+    if (settings.trigger === 'off' || (settings.trigger === 'alt' && !event.altKey)) return;
+    if (picker && event.composedPath().includes(picker.host)) return;
+    const target = event.target;
+    if (target instanceof Element && (target.closest('input, textarea, select') || target.isContentEditable)) return;
+    openForSelection(new DOMRect(event.clientX, event.clientY, 0, 0));
   });
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+    const reply = (value) => sendResponse(value ?? state());
     switch (message?.type) {
-      case 'list':
-        sendResponse({ terms: listTerms() });
+      case 'state': reply(); break;
+      case 'jump': reply(jumpTo(message.key)); break;
+      case 'remove': removeTerm(message.key); reply(); break;
+      case 'clear': closePicker(); clearPage(); reply(); break;
+      case 'hide': setHidden(Boolean(message.hidden)); reply(); break;
+      case 'toggle-hidden': setHidden(!hidden); reply(); break;
+      case 'save': saveTerm(message.key, message.scope).then(() => reply()); return true;
+      case 'unsave': unsaveTerm(message.key).then(() => reply()); return true;
+      case 'open-picker': {
+        const opened = openForSelection(new DOMRect(innerWidth / 2, innerHeight / 3, 0, 0));
+        reply({ opened });
         break;
-      case 'remove':
-        removeTerm(message.key);
-        sendResponse({ terms: listTerms() });
-        break;
-      case 'clear':
-        closePicker();
-        clearAll();
-        sendResponse({ terms: listTerms() });
-        break;
-      case 'jump':
-        sendResponse(jumpTo(message.key));
-        break;
-      default:
-        return false;
+      }
+      default: return false;
     }
     return false;
   });
+
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area !== 'local') return;
+    for (const [name, { newValue }] of Object.entries(changes)) {
+      if (name in settings) settings[name] = newValue ?? DEFAULTS[name];
+    }
+    if ('showMarkers' in changes) markers.schedule();
+    if ('matchVariants' in changes) render();
+  });
+
+  // Settings before saved keywords, so the first render already uses the
+  // stored "Match word variants".
+  chrome.storage.local.get(Object.keys(settings)).then((stored) => {
+    Object.assign(settings, stored);
+    store.onChange(loadSaved);
+    loadSaved();
+  });
+  addEventListener('resize', () => markers.schedule());
+  new ResizeObserver(() => markers.schedule()).observe(document.documentElement);
 })();

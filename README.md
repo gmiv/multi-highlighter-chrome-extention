@@ -2,17 +2,20 @@
 
 ## Description
 
-Word Highlighter is a Chrome extension: double-click any word on a webpage, pick a color, and every occurrence of that word on the page is highlighted in bold. Use one color per theme to make the structure of an article jump off the page.
+Word Highlighter is a Chrome extension that highlights words in color on every page you visit. Keep **saved keyword lists** (job-hunt terms, allergens, names, red flags) that are spotted automatically everywhere, or **double-click** any word for a quick, this-page-only highlight.
 
 ## Features
 
-- **Highlight every match:** Double-click a word and choose from 12 neon presets or any custom color. Matching is whole-word, case-insensitive, and Unicode-aware (`café`, `naïve`, `C++` all work), and the page's original casing is kept.
-- **Recolor or remove in place:** Double-click a highlighted word to change its color or remove it.
-- **Popup overview:** See every highlighted word on the page with its match count, click a word to jump through its matches, remove one, or **Clear all highlights**.
-- **Copy on double-click:** The word is also copied to your clipboard (toggle it off in the popup).
-- **Keyboard friendly:** Arrow keys move between swatches, Enter applies, Esc closes the picker.
-- **Plays nice with pages:** The picker lives in a shadow root so site CSS can't break it, editors and form fields are never touched, it works on pages with strict CSP, and removing highlights restores the page exactly.
-- **Light and dark:** Follows your system theme.
+- **Saved keyword lists:** Group keywords into named lists. Each list can be switched on or off and limited to specific sites, and each keyword has its own color and match mode. Lists sync across every Chrome you're signed in to.
+- **Highlights every page automatically:** Saved keywords are applied as pages load and keep up with content added later (infinite scroll, single-page apps, feeds, chat).
+- **Double-click to highlight:** Pick from 12 neon presets or any custom color. Press **★ Save** to keep the word on every site, or **★ This site** to keep it on just this one.
+- **Smart matching:** Whole-word, case-insensitive and Unicode-aware (`café`, `naïve`, `C++`). Turn **Match word variants** on or off (apple → apples, city → cities, run → running), and override it per keyword: Exact word, Word + variants, or Anywhere (apple → pineapple).
+- **Scrollbar markers:** Colored ticks on the right edge show where every match is; click one to jump there.
+- **Match count on the toolbar icon**, plus a popup listing every highlighted word with its count. Click a word to jump through its matches.
+- **Your rules:** Pause saved keywords on a site, hide everything on a page, choose the trigger (double-click, Alt + double-click, or off), copy-on-double-click on or off.
+- **Right-click → Highlight** and keyboard shortcuts: <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd> opens the popup, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd> highlights the selection, <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> shows or hides highlights.
+- **Backup:** Export and import your lists as JSON.
+- **Plays nice with pages:** The picker and markers live in shadow roots so site CSS can't break them, editors and form fields are never touched, it works on pages with strict CSP, and removing highlights restores the page exactly. Light and dark themes follow your system.
 
 ## Installation
 
@@ -21,20 +24,19 @@ Word Highlighter is a Chrome extension: double-click any word on a webpage, pick
 - Open Chrome and navigate to `chrome://extensions/`.
 - Enable 'Developer Mode' at the top right.
 - Click 'Load unpacked' and select the cloned extension directory.
-3. Tabs that were already open pick the extension up when you refresh them or open its popup on them.
+3. Tabs that were already open pick the extension up when you refresh them or use it on them.
 
 ## Usage
 
-- **Highlight a Word:** Double-click a word, then click a color.
-- **Recolor / Remove:** Double-click a highlighted word and pick a new color or **Remove**.
-- **Jump to Matches:** Open the popup and click a word to scroll to its next match.
-- **Clear Highlights:** Click the extension icon in the toolbar and press **Clear all highlights**.
-
-Highlights last until the page is reloaded.
+- **Quick highlight:** Double-click a word, then click a color. Double-click a highlighted word to recolor or remove it.
+- **Save a keyword:** Press **★ Save** in the picker, click ☆ next to a word in the popup, or type it into the popup's "Add a keyword" box.
+- **Manage lists:** Click the sliders icon in the popup (or "Manage keyword lists & settings"). Add keywords in bulk with commas, click a color dot to recolor, rename inline, move keywords between lists, and limit a list to sites like `example.com` (subdomains included).
+- **Pause on a site:** Flip "Saved keywords on" in the popup.
+- **Clear page highlights:** Removes this page's double-click highlights; saved keywords stay. Use the eye button to hide everything.
 
 ## Testing
 
-End-to-end tests load the real unpacked extension into Chromium and drive real double-clicks and the real popup:
+End-to-end tests load the real unpacked extension into Chromium and drive real double-clicks, the real popup and the real options page:
 
 ```sh
 cd test
